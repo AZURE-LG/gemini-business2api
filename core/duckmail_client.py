@@ -230,10 +230,10 @@ class DuckMailClient:
                 data = res.json() if res.content else {}
                 members = data.get("hydra:member", [])
                 if members:
-                    return members[0].get("domain") or "virgilian.com"
+                    return members[0].get("domain") or "duck.com"
         except Exception:
             pass
-        return "virgilian.com"
+        return "duck.com"
 
     def _log(self, level: str, message: str) -> None:
         if self.log_callback:
