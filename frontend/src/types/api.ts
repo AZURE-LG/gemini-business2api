@@ -28,10 +28,12 @@ export interface AccountConfigItem {
   expires_at?: string
   mail_provider?: string
   mail_address?: string
-  mail_password?: string
+  mail_password?: string | null
   mail_client_id?: string
   mail_refresh_token?: string
   mail_tenant?: string
+  mail_jwt_token?: string
+  mail_base_url?: string
 }
 
 export interface AccountsConfigResponse {
@@ -53,10 +55,19 @@ export interface Settings {
   basic: {
     api_key?: string
     base_url?: string
-    proxy?: string
+    proxy_for_auth?: string
+    proxy_for_chat?: string
+    temp_mail_provider?: string
     duckmail_base_url?: string
     duckmail_api_key?: string
     duckmail_verify_ssl?: boolean
+    moemail_base_url?: string
+    moemail_api_key?: string
+    moemail_domain?: string
+    freemail_base_url?: string
+    freemail_jwt_token?: string
+    freemail_verify_ssl?: boolean
+    freemail_domain?: string
     browser_engine?: string
     browser_headless?: boolean
     refresh_window_hours?: number

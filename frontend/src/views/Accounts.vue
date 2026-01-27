@@ -1,5 +1,21 @@
 ﻿<template>
-  <div class="space-y-8">
+  <div class="space-y-8 relative">
+    <!-- 全局加载遮罩 -->
+    <Teleport to="body">
+      <div
+        v-if="isBulkOperating"
+        class="fixed inset-0 z-[200] flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      >
+        <div class="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-8 shadow-lg">
+          <svg class="h-10 w-10 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p class="text-sm font-medium text-foreground">批量操作处理中...</p>
+        </div>
+      </div>
+    </Teleport>
+
     <section class="rounded-3xl border border-border bg-card p-6">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-center">
@@ -131,24 +147,38 @@
             <button
               type="button"
               class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors"
-              :class="!selectedCount
+              :class="!selectedCount || isBulkOperating
                 ? 'cursor-not-allowed text-muted-foreground'
                 : 'text-foreground hover:bg-accent'"
-              :disabled="!selectedCount"
+              :disabled="!selectedCount || isBulkOperating"
               @click="handleBulkEnable(); closeMoreActions()"
             >
-              批量启用
+              <span v-if="isBulkOperating" class="flex items-center gap-2">
+                <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                处理中...
+              </span>
+              <span v-else>批量启用</span>
             </button>
             <button
               type="button"
               class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors"
-              :class="!selectedCount
+              :class="!selectedCount || isBulkOperating
                 ? 'cursor-not-allowed text-muted-foreground'
                 : 'text-foreground hover:bg-accent'"
-              :disabled="!selectedCount"
+              :disabled="!selectedCount || isBulkOperating"
               @click="handleBulkDisable(); closeMoreActions()"
             >
-              批量禁用
+              <span v-if="isBulkOperating" class="flex items-center gap-2">
+                <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                处理中...
+              </span>
+              <span v-else>批量禁用</span>
             </button>
             <button
               type="button"
@@ -470,14 +500,17 @@
             <textarea
               v-model="importText"
               class="min-h-[140px] w-full rounded-2xl border border-input bg-background px-3 py-2 text-xs font-mono"
-              placeholder="duckmail----you@example.com----password&#10;user@outlook.com----loginPassword----clientId----refreshToken"
+              placeholder="duckmail----you@example.com----password&#10;moemail----you@moemail.app----emailId&#10;freemail----email（使用全局配置）&#10;freemail----email----jwtToken----baseUrl（自定义配置）&#10;user@outlook.com----loginPassword----clientId----refreshToken"
             ></textarea>
             <div class="rounded-2xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              <p>支持两种格式：</p>
-              <p class="mt-1 font-mono">duckmail----email----password</p>
-              <p class="mt-1 font-mono">email----password----clientId----refreshToken</p>
-              <p class="mt-2">导入后请执行一次"刷新选中"以获取 Cookie。</p>
-              <p class="mt-1">注册失败建议关闭无头浏览器再试</p>
+              <p>支持五种格式：</p>
+              <p class="mt-1 font-mono">duckmail----email----password（邮箱密码）</p>
+              <p class="mt-1 font-mono">moemail----email----emailId（邮箱ID）</p>
+              <p class="mt-1 font-mono">freemail----email（使用全局配置，推荐）</p>
+              <p class="mt-1 font-mono">freemail----email----jwtToken----baseUrl（自定义配置）</p>
+              <p class="mt-1 font-mono">email----password----clientId----refreshToken（Microsoft OAuth）</p>
+              <p class="mt-2">💡 导入的是邮箱凭据，导入后需执行"刷新选中"以登录 Gemini 获取 Cookie。</p>
+              <p class="mt-1">⚠️ 刷新失败建议关闭无头浏览器再试</p>
             </div>
             <div v-if="importError" class="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
               {{ importError }}
@@ -771,7 +804,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useAccountsStore } from '@/stores'
+import { useAccountsStore, useSettingsStore } from '@/stores'
 import SelectMenu from '@/components/ui/SelectMenu.vue'
 import Checkbox from '@/components/ui/Checkbox.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -782,6 +815,8 @@ import { accountsApi } from '@/api'
 import type { AdminAccount, AccountConfigItem, RegisterTask, LoginTask } from '@/types/api'
 
 const accountsStore = useAccountsStore()
+const settingsStore = useSettingsStore()
+const { settings } = storeToRefs(settingsStore)
 const { accounts, isLoading } = storeToRefs(accountsStore)
 const confirmDialog = useConfirmDialog()
 const toast = useToast()
@@ -820,6 +855,7 @@ const loginTask = ref<LoginTask | null>(null)
 const taskLogsRef = ref<HTMLDivElement | null>(null)
 const isRegistering = ref(false)
 const isRefreshing = ref(false)
+const isBulkOperating = ref(false)
 const automationError = ref('')
 const REGISTER_TASK_CACHE_KEY = 'accounts-register-task-cache'
 const LOGIN_TASK_CACHE_KEY = 'accounts-login-task-cache'
@@ -1037,6 +1073,75 @@ const parseImportLines = (raw: string) => {
       return
     }
 
+    if (parts[0].toLowerCase() === 'moemail') {
+      if (parts.length < 3 || !parts[1] || !parts[2]) {
+        errors.push(`第 ${lineNo} 行格式错误（moemail）`)
+        return
+      }
+      const email = parts[1]
+      const emailId = parts[2]  // moemail 的 email_id 作为 password 存储
+      items.push({
+        id: email,
+        secure_c_ses: '',
+        csesidx: '',
+        config_id: '',
+        expires_at: IMPORT_EXPIRES_AT,
+        mail_provider: 'moemail',
+        mail_address: email,
+        mail_password: emailId,
+      })
+      return
+    }
+
+    if (parts[0].toLowerCase() === 'freemail') {
+      if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
+        // 完整格式：freemail----email----jwtToken----baseUrl
+        const email = parts[1]
+        const jwtToken = parts[2]
+        const baseUrl = parts[3]
+        items.push({
+          id: email,
+          secure_c_ses: '',
+          csesidx: '',
+          config_id: '',
+          expires_at: IMPORT_EXPIRES_AT,
+          mail_provider: 'freemail',
+          mail_address: email,
+          mail_password: null,
+          mail_jwt_token: jwtToken,
+          mail_base_url: baseUrl,
+        })
+        return
+      } else if (parts.length === 2 && parts[1]) {
+        // 简化格式：freemail----email（使用全局配置）
+        const email = parts[1]
+        const globalJwtToken = settings.value?.basic?.freemail_jwt_token || ''
+        const globalBaseUrl = settings.value?.basic?.freemail_base_url || 'http://your-freemail-server.com'
+        
+        if (!globalJwtToken) {
+          errors.push(`第 ${lineNo} 行：使用简化格式但未配置全局 JWT Token，请先在设置页面保存 Freemail 配置`)
+          return
+        }
+        
+        items.push({
+          id: email,
+          secure_c_ses: '',
+          csesidx: '',
+          config_id: '',
+          expires_at: IMPORT_EXPIRES_AT,
+          mail_provider: 'freemail',
+          mail_address: email,
+          mail_password: null,
+          mail_jwt_token: globalJwtToken,
+          mail_base_url: globalBaseUrl,
+        })
+        return
+      } else {
+        errors.push(`第 ${lineNo} 行格式错误（freemail）：需要 freemail----email 或 freemail----email----jwtToken----baseUrl`)
+        return
+      }
+    }
+
     if (parts.length >= 4 && parts[0] && parts[2] && parts[3]) {
       const email = parts[0]
       const password = parts[1] || ''
@@ -1102,16 +1207,27 @@ const handleImport = async () => {
         mail_address: item.mail_address,
       }
 
-      if (item.mail_provider === 'microsoft') {
+      if (item.mail_provider === 'freemail') {
+        updated.mail_password = null
+        updated.mail_jwt_token = item.mail_jwt_token
+        updated.mail_base_url = item.mail_base_url
+        updated.mail_client_id = undefined
+        updated.mail_refresh_token = undefined
+        updated.mail_tenant = undefined
+      } else if (item.mail_provider === 'microsoft') {
         updated.mail_client_id = item.mail_client_id
         updated.mail_refresh_token = item.mail_refresh_token
         updated.mail_tenant = item.mail_tenant
         updated.mail_password = item.mail_password
+        updated.mail_jwt_token = undefined
+        updated.mail_base_url = undefined
       } else {
         updated.mail_password = item.mail_password
         updated.mail_client_id = undefined
         updated.mail_refresh_token = undefined
         updated.mail_tenant = undefined
+        updated.mail_jwt_token = undefined
+        updated.mail_base_url = undefined
       }
 
       next[idx] = updated
@@ -1571,12 +1687,15 @@ const saveEdit = async () => {
 }
 
 const handleBulkEnable = async () => {
+  isBulkOperating.value = true
   try {
     await accountsStore.bulkEnable(Array.from(selectedIds.value))
     toast.success('批量启用成功')
     selectedIds.value = new Set()
   } catch (error: any) {
     toast.error(error.message || '批量启用失败')
+  } finally {
+    isBulkOperating.value = false
   }
 }
 
@@ -1586,12 +1705,15 @@ const handleBulkDisable = async () => {
     message: '确定要批量禁用选中的账号吗？',
   })
   if (!confirmed) return
+  isBulkOperating.value = true
   try {
     await accountsStore.bulkDisable(Array.from(selectedIds.value))
     toast.success('批量禁用成功')
     selectedIds.value = new Set()
   } catch (error: any) {
     toast.error(error.message || '批量禁用失败')
+  } finally {
+    isBulkOperating.value = false
   }
 }
 
