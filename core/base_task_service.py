@@ -136,8 +136,6 @@ class BaseTaskService(Generic[T]):
             task = self._tasks.get(task_id)
             if task and task.status == TaskStatus.PENDING:
                 return task
-        if self._last_task_id:
-            return self._tasks.get(self._last_task_id)
         return None
 
     def get_pending_task_ids(self) -> List[str]:

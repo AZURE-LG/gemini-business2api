@@ -1335,24 +1335,56 @@ const removeCachedTask = (key: string) => {
   }
 }
 
-const readDismissedTaskId = (key: string) => {
+type DismissedTaskMeta = { id?: string; created_at?: number } | null
+
+const readDismissedTaskMeta = (key: string): DismissedTaskMeta => {
   try {
-    return localStorage.getItem(key)
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as Partial<{ id: string; created_at: number }>
+      if (parsed && (parsed.id || typeof parsed.created_at === 'number')) {
+        return { id: parsed.id, created_at: parsed.created_at }
+      }
+    } catch {
+      // Backward compatibility: plain id string
+      return { id: raw }
+    }
+    return null
   } catch {
     return null
   }
 }
 
-const writeDismissedTaskId = (key: string, taskId: string | null) => {
+const writeDismissedTaskMeta = (key: string, meta: DismissedTaskMeta) => {
   try {
-    if (!taskId) {
+    if (!meta || (!meta.id && typeof meta.created_at !== 'number')) {
       localStorage.removeItem(key)
       return
     }
-    localStorage.setItem(key, taskId)
+    localStorage.setItem(key, JSON.stringify(meta))
   } catch {
     // ignore storage errors
   }
+}
+
+const readDismissedTaskId = (key: string) => readDismissedTaskMeta(key)?.id || null
+
+const writeDismissedTaskId = (key: string, taskId: string | null) => {
+  if (!taskId) {
+    writeDismissedTaskMeta(key, null)
+    return
+  }
+  writeDismissedTaskMeta(key, { id: taskId })
+}
+
+const isTaskDismissed = (task: { id?: string; created_at?: number } | null | undefined, meta: DismissedTaskMeta) => {
+  if (!task || !meta) return false
+  if (meta.id && task.id && task.id === meta.id) return true
+  if (typeof meta.created_at === 'number' && typeof task.created_at === 'number' && task.created_at === meta.created_at) {
+    return true
+  }
+  return false
 }
 
 const readClearMarker = (key: string): TaskLogLine | null => {
@@ -1403,7 +1435,7 @@ const syncRegisterTask = (task: RegisterTask | null, persist = true) => {
   registerTask.value = task
   if (task.id && task.id !== lastRegisterTaskId.value) {
     lastRegisterTaskId.value = task.id
-    writeDismissedTaskId(REGISTER_DISMISS_KEY, null)
+    writeDismissedTaskMeta(REGISTER_DISMISS_KEY, null)
     registerLogClearMarker.value = null
     writeClearMarker(REGISTER_CLEAR_KEY, null)
   }
@@ -1427,7 +1459,7 @@ const syncLoginTask = (task: LoginTask | null, persist = true) => {
   loginTask.value = task
   if (task.id && task.id !== lastLoginTaskId.value) {
     lastLoginTaskId.value = task.id
-    writeDismissedTaskId(LOGIN_DISMISS_KEY, null)
+    writeDismissedTaskMeta(LOGIN_DISMISS_KEY, null)
     loginLogClearMarker.value = null
     writeClearMarker(LOGIN_CLEAR_KEY, null)
   }
@@ -1441,16 +1473,16 @@ const hydrateTaskCache = () => {
   loginLogClearMarker.value = readClearMarker(LOGIN_CLEAR_KEY)
   const cachedRegister = readCachedTask<RegisterTask>(REGISTER_TASK_CACHE_KEY)
   if (cachedRegister) {
-    const dismissedId = readDismissedTaskId(REGISTER_DISMISS_KEY)
-    if (!dismissedId || cachedRegister.id !== dismissedId) {
+    const dismissedMeta = readDismissedTaskMeta(REGISTER_DISMISS_KEY)
+    if (!isTaskDismissed(cachedRegister, dismissedMeta)) {
       registerTask.value = cachedRegister
       lastRegisterTaskId.value = cachedRegister.id || null
     }
   }
   const cachedLogin = readCachedTask<LoginTask>(LOGIN_TASK_CACHE_KEY)
   if (cachedLogin) {
-    const dismissedId = readDismissedTaskId(LOGIN_DISMISS_KEY)
-    if (!dismissedId || cachedLogin.id !== dismissedId) {
+    const dismissedMeta = readDismissedTaskMeta(LOGIN_DISMISS_KEY)
+    if (!isTaskDismissed(cachedLogin, dismissedMeta)) {
       loginTask.value = cachedLogin
       lastLoginTaskId.value = cachedLogin.id || null
     }
@@ -1846,7 +1878,20 @@ const fetchTaskHistory = async () => {
     })
     if (!response.ok) throw new Error('获取历史记录失败')
     const data = await response.json()
-    taskHistory.value = data.history || []
+    const history = Array.isArray(data.history) ? data.history : []
+    const dismissedRegister = readDismissedTaskMeta(REGISTER_DISMISS_KEY)
+    const dismissedLogin = readDismissedTaskMeta(LOGIN_DISMISS_KEY)
+    taskHistory.value = history.filter((record: any) => {
+      const meta = record?.type === 'register' ? dismissedRegister : dismissedLogin
+      if (!meta) return true
+      const id = typeof record?.id === 'string' ? record.id : String(record?.id || '')
+      const createdAt = typeof record?.created_at === 'number' ? record.created_at : undefined
+      if (meta.id && id && id === meta.id) return false
+      if (typeof meta.created_at === 'number' && typeof createdAt === 'number' && createdAt === meta.created_at) {
+        return false
+      }
+      return true
+    })
   } catch (error: any) {
     toast.error(error?.message || '获取历史记录失败')
   } finally {
@@ -1933,29 +1978,39 @@ const saveScheduledConfig = async () => {
   }
 }
 
-const clearTaskLogs = () => {
-  const isRegisterActive = registerTask.value?.status === 'running' || registerTask.value?.status === 'pending'
-  const isLoginActive = loginTask.value?.status === 'running' || loginTask.value?.status === 'pending'
-
-  if (!isRegisterActive) {
-    writeDismissedTaskId(REGISTER_DISMISS_KEY, registerTask.value?.id || null)
+const clearTaskLogs = async () => {
+  const confirmed = await confirmDialog.ask({
+    title: '清空任务记录',
+    message: '确定要清空当前任务与历史记录吗？此操作会删除数据库中的任务历史。',
+    confirmText: '清空',
+  })
+  if (!confirmed) return
+  try {
+    const response = await fetch('/admin/task-history?confirm=yes', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    if (!response.ok) throw new Error('清空任务记录失败')
+    taskHistory.value = []
+    writeDismissedTaskMeta(REGISTER_DISMISS_KEY, {
+      id: registerTask.value?.id,
+      created_at: registerTask.value?.created_at,
+    })
+    writeDismissedTaskMeta(LOGIN_DISMISS_KEY, {
+      id: loginTask.value?.id,
+      created_at: loginTask.value?.created_at,
+    })
     syncRegisterTask(null, true)
-  } else {
-    const regLogs = (registerTask.value?.logs || []) as TaskLogLine[]
-    registerLogClearMarker.value = regLogs.length ? regLogs[regLogs.length - 1] : null
-    writeClearMarker(REGISTER_CLEAR_KEY, registerLogClearMarker.value)
-  }
-
-  if (!isLoginActive) {
-    writeDismissedTaskId(LOGIN_DISMISS_KEY, loginTask.value?.id || null)
     syncLoginTask(null, true)
-  } else {
-    const loginLogsRaw = (loginTask.value?.logs || []) as TaskLogLine[]
-    loginLogClearMarker.value = loginLogsRaw.length ? loginLogsRaw[loginLogsRaw.length - 1] : null
-    writeClearMarker(LOGIN_CLEAR_KEY, loginLogClearMarker.value)
+    registerLogClearMarker.value = null
+    loginLogClearMarker.value = null
+    writeClearMarker(REGISTER_CLEAR_KEY, null)
+    writeClearMarker(LOGIN_CLEAR_KEY, null)
+    automationError.value = ''
+    toast.success('任务记录已清空')
+  } catch (error: any) {
+    toast.error(error?.message || '清空任务记录失败')
   }
-
-  automationError.value = ''
 }
 
 const filterLogsAfterMarker = (logs: TaskLogLine[], marker: TaskLogLine | null) => {
@@ -2645,12 +2700,12 @@ const loadCurrentTasks = async () => {
     const registerCurrent = await accountsApi.getRegisterCurrent()
     if (registerCurrent && 'id' in registerCurrent) {
       const isActive = registerCurrent.status === 'running' || registerCurrent.status === 'pending'
-      const dismissedId = readDismissedTaskId(REGISTER_DISMISS_KEY)
+      const dismissedMeta = readDismissedTaskMeta(REGISTER_DISMISS_KEY)
       if (isActive) {
         syncRegisterTask(registerCurrent)
         isRegistering.value = true
         startRegisterPolling(registerCurrent.id)
-      } else if (!dismissedId || registerCurrent.id !== dismissedId) {
+      } else if (!isTaskDismissed(registerCurrent, dismissedMeta)) {
         syncRegisterTask(registerCurrent)
       }
     } else {
@@ -2671,12 +2726,12 @@ const loadCurrentTasks = async () => {
     const loginCurrent = await accountsApi.getLoginCurrent()
     if (loginCurrent && 'id' in loginCurrent) {
       const isActive = loginCurrent.status === 'running' || loginCurrent.status === 'pending'
-      const dismissedId = readDismissedTaskId(LOGIN_DISMISS_KEY)
+      const dismissedMeta = readDismissedTaskMeta(LOGIN_DISMISS_KEY)
       if (isActive) {
         syncLoginTask(loginCurrent)
         isRefreshing.value = true
         startLoginPolling(loginCurrent.id)
-      } else if (!dismissedId || loginCurrent.id !== dismissedId) {
+      } else if (!isTaskDismissed(loginCurrent, dismissedMeta)) {
         syncLoginTask(loginCurrent)
       }
     } else {

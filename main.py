@@ -1692,11 +1692,11 @@ async def admin_get_task_history(request: Request, limit: int = 100):
     try:
         if register_service:
             current_register = register_service.get_current_task()
-            if current_register:
+            if current_register and current_register.status in ("running", "pending"):
                 live_entries.append(_build_history_entry("register", current_register.to_dict(), is_live=True))
         if login_service:
             current_login = login_service.get_current_task()
-            if current_login:
+            if current_login and current_login.status in ("running", "pending"):
                 live_entries.append(_build_history_entry("login", current_login.to_dict(), is_live=True))
     except Exception as exc:
         logger.warning(f"[HISTORY] build live entries failed: {exc}")
