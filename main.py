@@ -1077,11 +1077,14 @@ async def admin_stats(request: Request):
     for account_manager in multi_account_mgr.accounts.values():
         config = account_manager.config
         cooldown_seconds, cooldown_reason = account_manager.get_cooldown_info()
-        is_rate_limited = cooldown_seconds > 0 and cooldown_reason and "429" in cooldown_reason
+
+        # 判断账户状态
         is_expired = config.is_expired()
-        is_auto_disabled = (not account_manager.is_available) and (not config.disabled)
-        is_failed = is_auto_disabled or is_expired
-        is_active = (not is_failed) and (not config.disabled) and (not is_rate_limited)
+        is_manual_disabled = config.disabled
+        is_rate_limited = cooldown_seconds > 0 and cooldown_reason and "配额冷却" in cooldown_reason
+        is_global_cooldown = cooldown_seconds > 0 and cooldown_reason == "全局冷却"
+        is_failed = is_expired or is_global_cooldown
+        is_active = (not is_failed) and (not is_manual_disabled) and (not is_rate_limited)
 
         if is_rate_limited:
             rate_limited_accounts += 1
